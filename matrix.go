@@ -1,4 +1,4 @@
-package matrix
+package main
 
 import (
 	"errors"
@@ -6,11 +6,37 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"runtime"
+	"time"
 )
 
+type Number interface {
+	int | int8 | int16 | int32 | int64 | uint | uint8 | uint16 | uint32 | uint64 | float32 | float64
+}
+
+func main() {
+	m1 := MakeMatrix[float64](30000, 80)
+	m2 := MakeMatrix[float64](80, 30000)
+	fillMatrix(m1)
+	fillMatrix(m2)
+
+	// start := time.Now()
+	// m, _ := Dot(m1, m2)
+	// duration := time.Since(start)
+	// fmt.Println(duration)
+
+	start := time.Now()
+	fake_m, _ := fake_Dot(m1, m2)
+	duration := time.Since(start)
+	fmt.Println(duration)
+
+	// fmt.Println(m[0][0])
+	fmt.Println(fake_m[0][0])
+}
+
 // функция транспонирования матрицы
-func T(a [][]float64) [][]float64 {
-	m := MakeMatrix(len(a[0]), len(a), 0)
+func Transpose[T any](a [][]T) [][]T {
+	m := MakeMatrix[T](len(a[0]), len(a))
 	for i, row := range a {
 		for j := range row {
 			m[j][i] = a[i][j]
@@ -20,13 +46,12 @@ func T(a [][]float64) [][]float64 {
 }
 
 // функция умножения матриц
-func Dot(a, b [][]float64) ([][]float64, error) {
+func Dot[T Number](a, b [][]T) ([][]T, error) {
 	a_row_count, a_col_count := len(a), len(a[0])
 	b_row_count, b_col_count := len(b), len(b[0])
 
 	if a_col_count == b_row_count {
-		m := MakeMatrix(a_row_count, b_col_count, 0)
-
+		m := MakeMatrix[T](a_row_count, b_col_count)
 		for i, row := range m {
 			for j := range row {
 				m[i][j] = sum(a, b, i, j)
@@ -39,18 +64,28 @@ func Dot(a, b [][]float64) ([][]float64, error) {
 		return nil, errors.New(msg)
 	}
 }
-func fake_Dot(a, b [][]float64) ([][]float64, error) {
+
+func fake_Dot[T Number](a, b [][]T) ([][]T, error) {
 	a_row_count, a_col_count := len(a), len(a[0])
 	b_row_count, b_col_count := len(b), len(b[0])
 
 	if a_col_count == b_row_count {
-		m := MakeMatrix(a_row_count, b_col_count, 0)
+		m := MakeMatrix[T](a_row_count, b_col_count)
 		var ch []chan string
-		for i := range m {
-			ch = append(ch, make(chan string, 1))
-			go dot_threading(a, b, m, i, ch[i])
+		step := a_row_count/runtime.NumCPU() + 1
+		left_border := 0
+		for i := 0; i < runtime.NumCPU(); i++ {
+			if left_border+step < len(m) {
+				ch = append(ch, make(chan string, 1))
+				go dot_threading(a, b, m, left_border, left_border+step, ch[i])
+				left_border += step
+			} else if left_border < len(m) {
+				ch = append(ch, make(chan string, 1))
+				go dot_threading(a, b, m, left_border, len(m), ch[i])
+				left_border += step
+			}
 		}
-		for i := range m {
+		for i := range ch {
 			<-ch[i]
 		}
 		return m, nil
@@ -60,38 +95,20 @@ func fake_Dot(a, b [][]float64) ([][]float64, error) {
 		return nil, errors.New(msg)
 	}
 }
-func dot_threading(a, b, m [][]float64, rowIndex int, channel chan string) {
-	for j := range m[rowIndex] {
-		m[rowIndex][j] = sum(a, b, rowIndex, j)
+func dot_threading[T Number](a, b, m [][]T, startIndex, endIndex int, channel chan string) {
+	for i := startIndex; i < endIndex; i++ {
+		for j := 0; j < len(m[0]); j++ {
+			m[i][j] = sum(a, b, i, j)
+		}
 	}
 	channel <- ""
 }
-func Subtract(a, b [][]float64) [][]float64 {
-	if len(a) == len(b) && len(a[0]) == len(b[0]) {
-		res := MakeMatrix(len(a), len(a[0]), 0)
-		for i := 0; i < len(a); i++ {
-			for j := 0; j < len(a[0]); j++ {
-				res[i][j] = a[i][j] - b[i][j]
-			}
-		}
-		return res
-	} else {
-		log.Fatal(errors.New("Can't subtract matrixes, because len(a) != len(b)"))
-		return nil
-	}
-}
-func SubtractFromConst(c float64, a [][]float64) [][]float64 {
-	res := MakeMatrix(len(a), len(a[0]), 0)
-	for i := 0; i < len(a); i++ {
-		for j := 0; j < len(a[0]); j++ {
-			res[i][j] = c - a[i][j]
-		}
-	}
-	return res
-}
-func Sum(a, b [][]float64) [][]float64 {
-	if len(a) == len(b) && len(a[0]) == len(b[0]) {
-		res := MakeMatrix(len(a), len(a[0]), 0)
+func Sum[T Number](a, b [][]T) [][]T {
+	a_row_count, a_col_count := len(a), len(a[0])
+	b_row_count, b_col_count := len(b), len(b[0])
+
+	if a_row_count == b_row_count && a_col_count == b_col_count {
+		res := MakeMatrix[T](a_row_count, a_col_count)
 		for i := 0; i < len(a); i++ {
 			for j := 0; j < len(a[0]); j++ {
 				res[i][j] = a[i][j] + b[i][j]
@@ -103,11 +120,41 @@ func Sum(a, b [][]float64) [][]float64 {
 		return nil
 	}
 }
-func Multiply(a, b [][]float64) [][]float64 {
-	if len(a) == len(b) && len(a[0]) == len(b[0]) {
-		res := MakeMatrix(len(a), len(a[0]), 0)
+func Subtract[T Number](a, b [][]T) [][]T {
+	a_row_count, a_col_count := len(a), len(a[0])
+	b_row_count, b_col_count := len(b), len(b[0])
+
+	if a_row_count == b_row_count && a_col_count == b_col_count {
+		res := MakeMatrix[T](a_row_count, a_col_count)
 		for i := 0; i < len(a); i++ {
 			for j := 0; j < len(a[0]); j++ {
+				res[i][j] = a[i][j] - b[i][j]
+			}
+		}
+		return res
+	} else {
+		log.Fatal(errors.New("Can't subtract matrixes, because len(a) != len(b)"))
+		return nil
+	}
+}
+func SumConst[T Number](a [][]T, c T) [][]T {
+	res := MakeMatrix[T](len(a), len(a[0]))
+	for i := 0; i < len(a); i++ {
+		for j := 0; j < len(a[0]); j++ {
+			res[i][j] = a[i][j] + c
+		}
+	}
+	return res
+}
+
+func Multiply[T Number](a, b [][]T) [][]T {
+	a_row_count, a_col_count := len(a), len(a[0])
+	b_row_count, b_col_count := len(b), len(b[0])
+
+	if a_row_count == b_row_count && a_col_count == b_col_count {
+		res := MakeMatrix[T](a_row_count, a_col_count)
+		for i := 0; i < a_row_count; i++ {
+			for j := 0; j < a_col_count; j++ {
 				res[i][j] = a[i][j] * b[i][j]
 			}
 		}
@@ -117,8 +164,8 @@ func Multiply(a, b [][]float64) [][]float64 {
 		return nil
 	}
 }
-func MultiplyOnConst(a [][]float64, c float64) [][]float64 {
-	res := MakeMatrix(len(a), len(a[0]), 0)
+func MultiplyOnConst[T Number](a [][]T, c T) [][]T {
+	res := MakeMatrix[T](len(a), len(a[0]))
 	for i := 0; i < len(a); i++ {
 		for j := 0; j < len(a[0]); j++ {
 			res[i][j] = a[i][j] * c
@@ -128,7 +175,7 @@ func MultiplyOnConst(a [][]float64, c float64) [][]float64 {
 }
 
 // функция вывода матрицы в консоль
-func PrintMatrix(m [][]float64) {
+func PrintMatrix[T any](m [][]T) {
 	for _, row := range m {
 		fmt.Println(row)
 	}
@@ -136,24 +183,16 @@ func PrintMatrix(m [][]float64) {
 }
 
 // функция, создающая и возвращающая матрицу
-func MakeMatrix(n, m int, initvalue float64) [][]float64 {
-	matrix := make([][]float64, n)
-	rows := make([]float64, n*m)
+func MakeMatrix[T any](n, m int) [][]T {
+	matrix := make([][]T, n)
+	rows := make([]T, n*m)
 	for i, startRow := 0, 0; i < n; i, startRow = i+1, startRow+m {
 		endRow := startRow + m
 		matrix[i] = rows[startRow:endRow:endRow]
-		for j := 0; j < len(matrix[i]); j++ {
-			matrix[i][j] = initvalue
-		}
 	}
 	return matrix
 }
-
-// функция сигмоиды
-func Sigmoid(x float64) float64 {
-	return 1.0 / (1.0 + math.Exp(-x))
-}
-func sum(a, b [][]float64, a_row, b_col int) (sum float64) {
+func sum[T Number](a, b [][]T, a_row, b_col int) (sum T) {
 	for i := 0; i < len(b); i++ {
 		h := a[a_row][i] * b[i][b_col]
 		sum += h
@@ -161,17 +200,21 @@ func sum(a, b [][]float64, a_row, b_col int) (sum float64) {
 	return sum
 }
 
-// функция заполнения матрицы случайными значениями
-func FillMatrix(m [][]float64) [][]float64 {
-	for i, row := range m {
-		for j := range row {
-			m[i][j] = rand.Float64()*0.2 - 0.1
-		}
-	}
-	return m
+// функция сигмоиды
+func Sigmoid(x float64) float64 {
+	return 1.0 / (1.0 + math.Exp(-x))
 }
 
 // функция нормального распределения
 func normalDistribution(mu, sigma, x float64) float64 {
 	return math.Exp(-math.Pow(x-mu, 2)/(2*math.Pow(sigma, 2))) / (sigma * math.Pow(2*math.Pi, 0.5))
+}
+
+func fillMatrix(a [][]float64) [][]float64 {
+	for i := 0; i < len(a); i++ {
+		for j := 0; j < len(a[0]); j++ {
+			a[i][j] = rand.Float64()*2 - 1
+		}
+	}
+	return a
 }
