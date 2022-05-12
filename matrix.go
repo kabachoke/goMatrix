@@ -17,21 +17,15 @@ type Number interface {
 func main() {
 	m1 := MakeMatrix[float64](30000, 80)
 	m2 := MakeMatrix[float64](80, 30000)
+
 	fillMatrix(m1)
 	fillMatrix(m2)
 
-	// start := time.Now()
-	// m, _ := Dot(m1, m2)
-	// duration := time.Since(start)
-	// fmt.Println(duration)
-
 	start := time.Now()
-	fake_m, _ := fake_Dot(m1, m2)
+	m, _ := generic_Dot(m1, m2)
 	duration := time.Since(start)
 	fmt.Println(duration)
-
-	// fmt.Println(m[0][0])
-	fmt.Println(fake_m[0][0])
+	fmt.Println(m[0][0])
 }
 
 // функция транспонирования матрицы
@@ -65,7 +59,7 @@ func Dot[T Number](a, b [][]T) ([][]T, error) {
 	}
 }
 
-func fake_Dot[T Number](a, b [][]T) ([][]T, error) {
+func generic_Dot[T Number](a, b [][]T) ([][]T, error) {
 	a_row_count, a_col_count := len(a), len(a[0])
 	b_row_count, b_col_count := len(b), len(b[0])
 
@@ -95,10 +89,68 @@ func fake_Dot[T Number](a, b [][]T) ([][]T, error) {
 		return nil, errors.New(msg)
 	}
 }
+func float_Dot(a, b [][]float64) ([][]float64, error) {
+	a_row_count, a_col_count := len(a), len(a[0])
+	b_row_count, b_col_count := len(b), len(b[0])
+
+	if a_col_count == b_row_count {
+		m := my_MakeMatrix(a_row_count, b_col_count)
+		var ch []chan string
+		step := a_row_count/runtime.NumCPU() + 1
+		left_border := 0
+		for i := 0; i < runtime.NumCPU(); i++ {
+			if left_border+step < len(m) {
+				ch = append(ch, make(chan string, 1))
+				go float_dot_threading(a, b, m, left_border, left_border+step, ch[i])
+				left_border += step
+			} else if left_border < len(m) {
+				ch = append(ch, make(chan string, 1))
+				go float_dot_threading(a, b, m, left_border, len(m), ch[i])
+				left_border += step
+			}
+		}
+		for i := range ch {
+			<-ch[i]
+		}
+		return m, nil
+	} else {
+		msg := fmt.Sprintf("Can't multiply matrices, "+
+			"because a_col_count(%d) != b_row_count(%d)", a_col_count, b_row_count)
+		return nil, errors.New(msg)
+	}
+}
 func dot_threading[T Number](a, b, m [][]T, startIndex, endIndex int, channel chan string) {
+	k := len(m[0])
 	for i := startIndex; i < endIndex; i++ {
-		for j := 0; j < len(m[0]); j++ {
-			m[i][j] = sum(a, b, i, j)
+		for j := 0; j < k; j += 4 {
+			if j < k-3 {
+				m[i][j] = sum(a, b, i, j)
+				m[i][j+1] = sum(a, b, i, j+1)
+				m[i][j+2] = sum(a, b, i, j+2)
+				m[i][j+3] = sum(a, b, i, j+3)
+			} else {
+				for h := j; h < k; h++ {
+					m[i][h] = sum(a, b, i, h)
+				}
+			}
+		}
+	}
+	channel <- ""
+}
+func float_dot_threading(a, b, m [][]float64, startIndex, endIndex int, channel chan string) {
+	k := len(m[0])
+	for i := startIndex; i < endIndex; i++ {
+		for j := 0; j < k; j += 4 {
+			if j < k-3 {
+				m[i][j] = sum(a, b, i, j)
+				m[i][j+1] = sum(a, b, i, j+1)
+				m[i][j+2] = sum(a, b, i, j+2)
+				m[i][j+3] = sum(a, b, i, j+3)
+			} else {
+				for h := j; h < k; h++ {
+					m[i][h] = sum(a, b, i, h)
+				}
+			}
 		}
 	}
 	channel <- ""
@@ -109,8 +161,8 @@ func Sum[T Number](a, b [][]T) [][]T {
 
 	if a_row_count == b_row_count && a_col_count == b_col_count {
 		res := MakeMatrix[T](a_row_count, a_col_count)
-		for i := 0; i < len(a); i++ {
-			for j := 0; j < len(a[0]); j++ {
+		for i := 0; i < a_row_count; i++ {
+			for j := 0; j < a_col_count; j++ {
 				res[i][j] = a[i][j] + b[i][j]
 			}
 		}
@@ -186,6 +238,15 @@ func PrintMatrix[T any](m [][]T) {
 func MakeMatrix[T any](n, m int) [][]T {
 	matrix := make([][]T, n)
 	rows := make([]T, n*m)
+	for i, startRow := 0, 0; i < n; i, startRow = i+1, startRow+m {
+		endRow := startRow + m
+		matrix[i] = rows[startRow:endRow:endRow]
+	}
+	return matrix
+}
+func my_MakeMatrix(n, m int) [][]float64 {
+	matrix := make([][]float64, n)
+	rows := make([]float64, n*m)
 	for i, startRow := 0, 0; i < n; i, startRow = i+1, startRow+m {
 		endRow := startRow + m
 		matrix[i] = rows[startRow:endRow:endRow]
