@@ -6,7 +6,6 @@ import (
 	"log"
 	"math"
 	"math/rand"
-	"runtime"
 	"time"
 )
 
@@ -15,14 +14,14 @@ type Number interface {
 }
 
 func main() {
-	m1 := MakeMatrix[float64](30000, 80)
-	m2 := MakeMatrix[float64](80, 30000)
+	m1 := MakeMatrix[float64](10000, 80)
+	m2 := MakeMatrix[float64](80, 10000)
 
 	fillMatrix(m1)
 	fillMatrix(m2)
 
 	start := time.Now()
-	m, _ := generic_Dot(m1, m2)
+	m, _ := Dot(m1, m2)
 	duration := time.Since(start)
 	fmt.Println(duration)
 	fmt.Println(m[0][0])
@@ -59,102 +58,6 @@ func Dot[T Number](a, b [][]T) ([][]T, error) {
 	}
 }
 
-func generic_Dot[T Number](a, b [][]T) ([][]T, error) {
-	a_row_count, a_col_count := len(a), len(a[0])
-	b_row_count, b_col_count := len(b), len(b[0])
-
-	if a_col_count == b_row_count {
-		m := MakeMatrix[T](a_row_count, b_col_count)
-		var ch []chan string
-		step := a_row_count/runtime.NumCPU() + 1
-		left_border := 0
-		for i := 0; i < runtime.NumCPU(); i++ {
-			if left_border+step < len(m) {
-				ch = append(ch, make(chan string, 1))
-				go dot_threading(a, b, m, left_border, left_border+step, ch[i])
-				left_border += step
-			} else if left_border < len(m) {
-				ch = append(ch, make(chan string, 1))
-				go dot_threading(a, b, m, left_border, len(m), ch[i])
-				left_border += step
-			}
-		}
-		for i := range ch {
-			<-ch[i]
-		}
-		return m, nil
-	} else {
-		msg := fmt.Sprintf("Can't multiply matrices, "+
-			"because a_col_count(%d) != b_row_count(%d)", a_col_count, b_row_count)
-		return nil, errors.New(msg)
-	}
-}
-func float_Dot(a, b [][]float64) ([][]float64, error) {
-	a_row_count, a_col_count := len(a), len(a[0])
-	b_row_count, b_col_count := len(b), len(b[0])
-
-	if a_col_count == b_row_count {
-		m := my_MakeMatrix(a_row_count, b_col_count)
-		var ch []chan string
-		step := a_row_count/runtime.NumCPU() + 1
-		left_border := 0
-		for i := 0; i < runtime.NumCPU(); i++ {
-			if left_border+step < len(m) {
-				ch = append(ch, make(chan string, 1))
-				go float_dot_threading(a, b, m, left_border, left_border+step, ch[i])
-				left_border += step
-			} else if left_border < len(m) {
-				ch = append(ch, make(chan string, 1))
-				go float_dot_threading(a, b, m, left_border, len(m), ch[i])
-				left_border += step
-			}
-		}
-		for i := range ch {
-			<-ch[i]
-		}
-		return m, nil
-	} else {
-		msg := fmt.Sprintf("Can't multiply matrices, "+
-			"because a_col_count(%d) != b_row_count(%d)", a_col_count, b_row_count)
-		return nil, errors.New(msg)
-	}
-}
-func dot_threading[T Number](a, b, m [][]T, startIndex, endIndex int, channel chan string) {
-	k := len(m[0])
-	for i := startIndex; i < endIndex; i++ {
-		for j := 0; j < k; j += 4 {
-			if j < k-3 {
-				m[i][j] = sum(a, b, i, j)
-				m[i][j+1] = sum(a, b, i, j+1)
-				m[i][j+2] = sum(a, b, i, j+2)
-				m[i][j+3] = sum(a, b, i, j+3)
-			} else {
-				for h := j; h < k; h++ {
-					m[i][h] = sum(a, b, i, h)
-				}
-			}
-		}
-	}
-	channel <- ""
-}
-func float_dot_threading(a, b, m [][]float64, startIndex, endIndex int, channel chan string) {
-	k := len(m[0])
-	for i := startIndex; i < endIndex; i++ {
-		for j := 0; j < k; j += 4 {
-			if j < k-3 {
-				m[i][j] = sum(a, b, i, j)
-				m[i][j+1] = sum(a, b, i, j+1)
-				m[i][j+2] = sum(a, b, i, j+2)
-				m[i][j+3] = sum(a, b, i, j+3)
-			} else {
-				for h := j; h < k; h++ {
-					m[i][h] = sum(a, b, i, h)
-				}
-			}
-		}
-	}
-	channel <- ""
-}
 func Sum[T Number](a, b [][]T) [][]T {
 	a_row_count, a_col_count := len(a), len(a[0])
 	b_row_count, b_col_count := len(b), len(b[0])
@@ -168,7 +71,7 @@ func Sum[T Number](a, b [][]T) [][]T {
 		}
 		return res
 	} else {
-		log.Fatal(errors.New("Can't sum matrixes, because len(a) != len(b)"))
+		log.Fatal(errors.New("can't sum matrixes, because len(a) != len(b)"))
 		return nil
 	}
 }
@@ -185,7 +88,7 @@ func Subtract[T Number](a, b [][]T) [][]T {
 		}
 		return res
 	} else {
-		log.Fatal(errors.New("Can't subtract matrixes, because len(a) != len(b)"))
+		log.Fatal(errors.New("can't subtract matrixes, because len(a) != len(b)"))
 		return nil
 	}
 }
@@ -212,7 +115,7 @@ func Multiply[T Number](a, b [][]T) [][]T {
 		}
 		return res
 	} else {
-		log.Fatal(errors.New("Can't multiply matrixes, because len(a) != len(b)"))
+		log.Fatal(errors.New("can't multiply matrixes, because len(a) != len(b)"))
 		return nil
 	}
 }
@@ -244,15 +147,7 @@ func MakeMatrix[T any](n, m int) [][]T {
 	}
 	return matrix
 }
-func my_MakeMatrix(n, m int) [][]float64 {
-	matrix := make([][]float64, n)
-	rows := make([]float64, n*m)
-	for i, startRow := 0, 0; i < n; i, startRow = i+1, startRow+m {
-		endRow := startRow + m
-		matrix[i] = rows[startRow:endRow:endRow]
-	}
-	return matrix
-}
+
 func sum[T Number](a, b [][]T, a_row, b_col int) (sum T) {
 	for i := 0; i < len(b); i++ {
 		h := a[a_row][i] * b[i][b_col]
